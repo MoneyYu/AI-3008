@@ -92,9 +92,9 @@ variable "image_model_version" {
 }
 
 variable "search_location" {
-  description = "Region for Azure AI Search. Defaults to the main location (eastus2); override if that region is out of Search capacity."
+  description = "Region for Azure AI Search. Defaults to eastus (eastus2 is frequently out of AI Search capacity). Override to deploy Search elsewhere."
   type        = string
-  default     = null
+  default     = "eastus"
 }
 
 variable "deployer_object_id" {

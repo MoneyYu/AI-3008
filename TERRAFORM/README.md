@@ -99,8 +99,8 @@ These are preview / quota-constrained and are deployed in the **Foundry portal**
   `gpt-5.2` in your region. Check in the Foundry portal under **Operate > Quota** before applying.
   If `gpt-image-2` has no quota, override `image_model_name`/`image_model_version` (for example to
   `gpt-image-1.5` / `2025-12-16`).
-- AI Search capacity in the chosen region. If the main region (eastus2) is out of Search capacity,
-  set `search_location` to another region (for example `eastus`).
+- AI Search capacity in the chosen region. Search defaults to **`eastus`** (eastus2 is frequently
+  out of AI Search capacity). Override `search_location` if `eastus` is also constrained.
 
 ## Usage
 
@@ -131,7 +131,7 @@ terraform output -raw storage_account_name
 | `image_model_version` | `2026-04-21` | Version for `image_model_name` (e.g. `2025-12-16` for `gpt-image-1.5`) |
 | `embedding_capacity` | `50` | Capacity for `text-embedding-3-large` |
 | `cu_completion_capacity` | `50` | Capacity for the `gpt-5.2` CU completion model |
-| `search_location` | *(main location)* | Region for AI Search; override if the default region is out of capacity |
+| `search_location` | `eastus` | Region for AI Search (eastus2 is often out of Search capacity); override if needed |
 | `deployer_object_id` | *(Terraform identity)* | Entra object ID the data-plane scripts run as; override if Terraform runs under a different principal than `az login` |
 | `enable_data_plane` | `true` | Run the data-plane scripts after apply |
 | `user_name` / `user_password` | `demouser` / `Azuredemo2020` | Reserved for lab user scenarios |
@@ -140,12 +140,14 @@ terraform output -raw storage_account_name
 
 ### Example: deploy in a quota/capacity-constrained subscription
 
+Search already defaults to `eastus`; this example also overrides the image model. Add
+`-var "search_location=<region>"` only if `eastus` is constrained too.
+
 ```powershell
 terraform apply -auto-approve `
   -var "group_postfix=0608" `
   -var "image_model_name=gpt-image-1.5" `
-  -var "image_model_version=2025-12-16" `
-  -var "search_location=eastus"
+  -var "image_model_version=2025-12-16"
 ```
 
 ## Data plane: sample data, analyzer, and index
