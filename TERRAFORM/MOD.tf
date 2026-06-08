@@ -10,7 +10,7 @@
 # Storage - holds sample data for the demos and the AI Search knowledge store.
 ###############################################################################
 resource "azurerm_storage_account" "default" {
-  name                            = "${local.class_name}${var.group_postfix}st${random_string.rid.result}"
+  name                            = "${local.class_name}${var.group_postfix}st${local.random_str}"
   location                        = azurerm_resource_group.rg.location
   resource_group_name             = azurerm_resource_group.rg.name
   account_tier                    = "Standard"
@@ -75,12 +75,12 @@ resource "azurerm_role_assignment" "deployer_blob" {
 # https://learn.microsoft.com/azure/foundry/how-to/create-resource-terraform
 ###############################################################################
 resource "azurerm_cognitive_account" "foundry" {
-  name                  = "${local.group_name_lower}-foundry-${random_string.rid.result}"
+  name                  = "${local.group_name_lower}-foundry-${local.random_str}"
   location              = azurerm_resource_group.rg.location
   resource_group_name   = azurerm_resource_group.rg.name
   kind                  = "AIServices"
   sku_name              = "S0"
-  custom_subdomain_name = "${local.group_name_lower}-foundry-${random_string.rid.result}"
+  custom_subdomain_name = "${local.group_name_lower}-foundry-${local.random_str}"
 
   # Company policy enforces Entra ID (AAD) auth only - keys are disabled.
   local_auth_enabled = false
@@ -220,7 +220,7 @@ resource "azurerm_cognitive_deployment" "cu_completion" {
 # Azure AI Search - knowledge mining (module 8).
 ###############################################################################
 resource "azurerm_search_service" "search" {
-  name                = "${local.group_name_lower}-search-${random_string.rid.result}"
+  name                = "${local.group_name_lower}-search-${local.random_str}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = local.search_location
   sku                 = "standard"
@@ -270,7 +270,7 @@ resource "azurerm_role_assignment" "deployer_search_data" {
 # Azure Document Intelligence (module 7).
 ###############################################################################
 resource "azurerm_cognitive_account" "docintel" {
-  name                = "${local.group_name_lower}-docintel-${random_string.rid.result}"
+  name                = "${local.group_name_lower}-docintel-${local.random_str}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   kind                = "FormRecognizer"
@@ -279,7 +279,7 @@ resource "azurerm_cognitive_account" "docintel" {
   # Company policy enforces Entra ID (AAD) auth only - keys are disabled.
   # AAD auth requires a custom subdomain (regional endpoints reject AAD tokens).
   local_auth_enabled    = false
-  custom_subdomain_name = "${local.group_name_lower}-docintel-${random_string.rid.result}"
+  custom_subdomain_name = "${local.group_name_lower}-docintel-${local.random_str}"
 
   identity {
     type = "SystemAssigned"

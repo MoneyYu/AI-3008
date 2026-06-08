@@ -133,7 +133,11 @@ locals {
   group_name_lower = lower(local.group_name)
   location         = "eastus2"
   search_location  = coalesce(var.search_location, local.location)
-  random_str       = "vis"
+  # Suffix used in resource names. Fixed by default for predictable, stable
+  # names. To use a fresh dynamic suffix instead (e.g. to avoid the ~48h
+  # soft-delete name reservation on Cognitive accounts after a destroy/
+  # recreate), change this one line to: random_str = random_string.rid.result
+  random_str = "vis"
   # Entra object ID that the data-plane scripts authenticate as (the `az`
   # identity). Defaults to the identity Terraform runs as.
   deployer_oid = coalesce(var.deployer_object_id, data.azurerm_client_config.current.object_id)
@@ -155,6 +159,8 @@ locals {
 
 data "azurerm_client_config" "current" {}
 
+# Dynamic random suffix. Kept available so you can switch resource naming from
+# the fixed local.random_str to this (random_string.rid.result) when needed.
 resource "random_string" "rid" {
   length  = 3
   special = false
