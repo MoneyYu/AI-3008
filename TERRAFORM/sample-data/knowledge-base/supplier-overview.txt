@@ -1,0 +1,9 @@
+Supplier and Partner Overview
+
+Northwind Traders works with a trusted network of suppliers. Adventure Works
+Supply, based in Tempe, Arizona, provides tent poles and fabric. Fabrikam
+Outfitters in Portland, Oregon supplies footwear and apparel for wholesale.
+
+Logistics partner Contoso Logistics manages our Midwest distribution from
+Columbus, Ohio, while Tailwind Fulfillment LLC handles West Coast orders from
+Portland. Procurement is overseen by Daniel Mendoza and his team in Seattle.

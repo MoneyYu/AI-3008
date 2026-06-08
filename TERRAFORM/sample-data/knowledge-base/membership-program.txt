@@ -1,0 +1,9 @@
+Trailblazer Membership Program
+
+The Northwind Traders Trailblazer program rewards loyal customers with points
+on every purchase. Members earn 5 points per dollar and receive early access to
+seasonal sales.
+
+Annual membership costs 40 dollars and includes free expedited shipping, a
+20 percent discount on gear rentals, and two guided day hikes near Seattle or
+Denver. Members who refer a friend receive a 15 dollar credit.

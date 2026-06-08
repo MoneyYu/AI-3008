@@ -1,0 +1,15 @@
+Frequently Asked Questions - Returns and Exchanges
+
+Q: What is your return window?
+A: Unused items may be returned within 60 days of purchase for a full refund.
+
+Q: Do I need a receipt?
+A: A receipt or order confirmation from northwindtraders.example is required
+for all returns and exchanges.
+
+Q: Can I return online orders in store?
+A: Yes. Online orders can be returned at any of our retail locations, including
+our flagship store on Pine Street in Seattle.
+
+Q: How long do refunds take?
+A: Refunds are issued to the original payment method within five business days.

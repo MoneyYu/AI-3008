@@ -1,0 +1,10 @@
+Shipping and Delivery Policy
+
+Northwind Traders ships to all 50 U.S. states and to Canada. Standard ground
+shipping is free on orders over 75 dollars. Orders placed before 2:00 PM
+Pacific Time ship the same business day from our Kent, Washington warehouse.
+
+Expedited two-day shipping is available for an additional fee. International
+customers in Vancouver and Toronto should allow seven to ten business days for
+delivery. Tailwind Fulfillment LLC, based in Portland, Oregon, handles our
+West Coast logistics.

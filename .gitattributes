@@ -4,6 +4,19 @@
 * text=auto
 
 ###############################################################################
+# Treat binary sample-data and asset formats as binary so Git never applies
+# line-ending normalization (which would corrupt them).
+###############################################################################
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.pptx binary
+*.docx binary
+*.xlsx binary
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

@@ -1,0 +1,9 @@
+Northwind Traders Store Locations
+
+Our flagship store is located at 412 Pine Street in downtown Seattle,
+Washington. Additional locations include Bellevue, Spokane, Portland, Denver,
+Boulder, Salt Lake City, and Phoenix.
+
+Each store offers gear rentals, boot fitting, and weekly trail-planning
+workshops led by experienced guides. The Denver store, managed by regional
+manager Sofia Castillo, also features an indoor climbing wall.
