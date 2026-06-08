@@ -20,9 +20,7 @@ resource "azurerm_storage_account" "default" {
   # Company policy forbids access keys - enforce Entra ID (AAD) auth only.
   shared_access_key_enabled = false
 
-  tags = {
-    environment = local.group_name
-  }
+  tags = local.default_tags
 }
 
 # Sample images for the vision / Content Understanding image demos.
@@ -94,9 +92,7 @@ resource "azurerm_cognitive_account" "foundry" {
     type = "SystemAssigned"
   }
 
-  tags = {
-    environment = local.group_name
-  }
+  tags = local.default_tags
 }
 
 # The principal running the Content Understanding data-plane script needs to
@@ -115,6 +111,8 @@ resource "azurerm_cognitive_account_project" "project" {
   identity {
     type = "SystemAssigned"
   }
+
+  tags = local.default_tags
 }
 
 ###############################################################################
@@ -235,9 +233,7 @@ resource "azurerm_search_service" "search" {
     type = "SystemAssigned"
   }
 
-  tags = {
-    environment = local.group_name
-  }
+  tags = local.default_tags
 }
 
 # The AI Search managed identity needs to read the source blobs (indexer) and
@@ -289,9 +285,7 @@ resource "azurerm_cognitive_account" "docintel" {
     type = "SystemAssigned"
   }
 
-  tags = {
-    environment = local.group_name
-  }
+  tags = local.default_tags
 }
 
 ###############################################################################

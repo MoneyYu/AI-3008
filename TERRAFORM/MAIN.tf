@@ -138,6 +138,13 @@ locals {
   # identity). Defaults to the identity Terraform runs as.
   deployer_oid = coalesce(var.deployer_object_id, data.azurerm_client_config.current.object_id)
 
+  # Shared tags applied to every taggable resource. SecurityControl = "Ignore"
+  # exempts these lab/demo resources from security/CSPM policy.
+  default_tags = {
+    environment     = local.group_name
+    SecurityControl = "Ignore"
+  }
+
   lab01_name = "lab01"
   lab02_name = "lab02"
   lab03_name = "lab03"
@@ -164,9 +171,7 @@ resource "azurerm_resource_group" "rg" {
   name     = local.group_name
   location = local.location
 
-  tags = {
-    environment = local.group_name
-  }
+  tags = local.default_tags
 }
 
 # Empty "Demo" resource group used when the trainer builds everything live
@@ -175,7 +180,5 @@ resource "azurerm_resource_group" "demo_rg" {
   name     = "Demo${var.group_postfix}"
   location = local.location
 
-  tags = {
-    environment = local.group_name
-  }
+  tags = local.default_tags
 }
