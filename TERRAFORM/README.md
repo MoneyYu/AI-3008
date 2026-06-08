@@ -28,6 +28,23 @@ After the resources are created, three PowerShell scripts bring the environment 
 3. `scripts/build-search-index.ps1` - builds and runs the AI Search **knowledge-mining** pipeline
    (data source -> skillset with AI enrichment + knowledge store -> index -> indexer).
 
+## Authentication: Entra ID only (no keys)
+
+This stack is designed for tenants where **company policy forbids account/access keys** (the
+common `disableLocalAuth` / "Key based authentication is not permitted" enterprise posture). Every
+service uses **Microsoft Entra ID (AAD)** auth:
+
+- Storage uses `shared_access_key_enabled = false`; the provider sets `storage_use_azuread = true`.
+- The Foundry/AI Services account and Document Intelligence set `local_auth_enabled = false`.
+- Azure AI Search sets `local_authentication_enabled = false` (RBAC-only).
+- The data-plane scripts acquire AAD bearer tokens (`az account get-access-token`) instead of keys,
+  and the AI Search indexer/knowledge-store/AI-Services skill bindings use **managed identity**.
+- Terraform creates the required **role assignments** automatically (for the running principal and
+  the Search managed identity). Because fresh role assignments take time to propagate, the scripts
+  retry on `401/403`.
+
+> This was validated end-to-end (deploy + data plane + destroy) on a policy-restricted subscription.
+
 ## Models & lifecycle
 
 Models are validated against the
@@ -72,8 +89,14 @@ These are preview / quota-constrained and are deployed in the **Foundry portal**
   $env:ARM_SUBSCRIPTION_ID = "<your-subscription-id>"
   ```
 
-- Quota in **East US 2** for `gpt-5.4`, `gpt-image-2`, `text-embedding-3-large`, and `gpt-5.2`.
-  Check in the Foundry portal under **Operate > Quota** before applying.
+- Permission to **create role assignments** (Owner or User Access Administrator) - the stack assigns
+  blob / Cognitive Services / Search data-plane roles because keys are disabled.
+- Quota for `gpt-5.4`, `gpt-image-2` (or your `image_model_name`), `text-embedding-3-large`, and
+  `gpt-5.2` in your region. Check in the Foundry portal under **Operate > Quota** before applying.
+  If `gpt-image-2` has no quota, override `image_model_name`/`image_model_version` (for example to
+  `gpt-image-1.5` / `2025-12-16`).
+- AI Search capacity in the chosen region. If the main region (eastus2) is out of Search capacity,
+  set `search_location` to another region (for example `eastus`).
 
 ## Usage
 
@@ -84,27 +107,41 @@ terraform plan  -out main.tfplan -var "group_postfix=01"
 terraform apply main.tfplan
 ```
 
-Retrieve connection details for the demos:
+Retrieve connection details for the demos (auth is Entra ID; there are no key outputs):
 
 ```powershell
-terraform output                         # non-sensitive values
+terraform output                          # non-sensitive values
 terraform output -raw foundry_endpoint
-terraform output -raw foundry_key        # sensitive
-terraform output -raw search_admin_key   # sensitive
+terraform output -raw search_endpoint
+terraform output -raw storage_account_name
 ```
 
 ### Variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `group_postfix` | *(required)* | Unique suffix per class/instance |
+| `group_postfix` | *(required)* | Unique suffix per class/instance (`^[a-z0-9]{1,10}$`) |
 | `chat_capacity` | `50` | Capacity (k TPM) for `gpt-5.4` |
-| `image_capacity` | `1` | Capacity for `gpt-image-2` |
+| `image_capacity` | `1` | Capacity for the image model |
+| `image_model_name` | `gpt-image-2` | Image model to deploy; override to one you have quota for (e.g. `gpt-image-1.5`) |
+| `image_model_version` | `2026-04-21` | Version for `image_model_name` (e.g. `2025-12-16` for `gpt-image-1.5`) |
 | `embedding_capacity` | `50` | Capacity for `text-embedding-3-large` |
+| `cu_completion_capacity` | `50` | Capacity for the `gpt-5.2` CU completion model |
+| `search_location` | *(main location)* | Region for AI Search; override if the default region is out of capacity |
 | `enable_data_plane` | `true` | Run the data-plane scripts after apply |
 | `user_name` / `user_password` | `demouser` / `Azuredemo2020` | Reserved for lab user scenarios |
 
 > Set `enable_data_plane=false` to provision resources only (no sample data, analyzer, or index).
+
+### Example: deploy in a quota/capacity-constrained subscription
+
+```powershell
+terraform apply -auto-approve `
+  -var "group_postfix=0608" `
+  -var "image_model_name=gpt-image-1.5" `
+  -var "image_model_version=2025-12-16" `
+  -var "search_location=eastus"
+```
 
 ## Sample data
 
@@ -122,11 +159,16 @@ open-sourced):
 terraform destroy -var "group_postfix=01"
 ```
 
+If you used non-default vars (image model / search region), pass the same `-var` flags to `destroy`.
+
 ## Notes & known limitations
 
 - Model **versions** and the **retirement schedule** change over time - re-verify before each delivery.
-- `terraform apply` may fail if the subscription lacks **quota** for the selected models in East US 2.
-- The Content Understanding analyzer and AI Search scripts use the **GA REST APIs**
-  (`2025-11-01` and `2024-07-01`). If those API versions change, update the scripts.
-- The data-plane scripts authenticate with **resource keys** (retrieved by Terraform), so they do
-  not require `az login`; only `upload-sample-data.ps1` uses the `az` CLI (with the storage key).
+- `terraform apply` may fail if the subscription lacks **quota** for the selected models, or if the
+  chosen region is out of **AI Search capacity** - use `image_model_name`/`image_model_version` and
+  `search_location` to adapt (see the example above).
+- The data-plane scripts authenticate with **Entra ID** (`az login` required) and use the
+  Content Understanding GA REST API (`2025-11-01`) and the AI Search REST API (`2024-11-01-preview`,
+  needed for the managed-identity `AIServicesByIdentity` skill binding). Update these if the API
+  versions change.
+- All three scripts run with `pwsh -NoProfile` so a user's PowerShell profile can't interfere.

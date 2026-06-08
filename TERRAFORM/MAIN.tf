@@ -27,6 +27,10 @@ terraform {
 }
 
 provider "azurerm" {
+  # Company policy forbids storage account access keys - use Entra ID (AAD)
+  # for all storage data-plane operations.
+  storage_use_azuread = true
+
   features {
     cognitive_account {
       purge_soft_delete_on_destroy = true
@@ -70,9 +74,27 @@ variable "chat_capacity" {
 }
 
 variable "image_capacity" {
-  description = "Capacity for the gpt-image-2 deployment."
+  description = "Capacity for the image-generation deployment."
   type        = number
   default     = 1
+}
+
+variable "image_model_name" {
+  description = "Image-generation model to deploy. Default gpt-image-2 (latest GA); override to a model your subscription has quota for (e.g. gpt-image-1.5)."
+  type        = string
+  default     = "gpt-image-2"
+}
+
+variable "image_model_version" {
+  description = "Version for the image-generation model. Must match image_model_name."
+  type        = string
+  default     = "2026-04-21"
+}
+
+variable "search_location" {
+  description = "Region for Azure AI Search. Defaults to the main location (eastus2); override if that region is out of Search capacity."
+  type        = string
+  default     = null
 }
 
 variable "embedding_capacity" {
@@ -104,6 +126,7 @@ locals {
   class_name       = "ai3008"
   group_name_lower = lower(local.group_name)
   location         = "eastus2"
+  search_location  = coalesce(var.search_location, local.location)
   random_str       = "vis"
   # Object ID of the lab administrator to grant data-plane RBAC. Replace with
   # your own principal object ID if you run the data-plane scripts.

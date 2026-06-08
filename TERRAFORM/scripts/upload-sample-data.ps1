@@ -16,8 +16,13 @@
 .NOTES
     Environment variables:
       STORAGE_ACCOUNT   - storage account name
-      STORAGE_KEY       - storage account key
       SAMPLE_DATA_PATH  - path to the sample-data folder
+
+    Authentication: Entra ID (AAD) via `--auth-mode login`. Company policy
+    forbids storage account access keys, so the running principal must hold a
+    blob data role (e.g. Storage Blob Data Contributor) on the account. Because
+    a freshly created role assignment can take a minute or two to propagate,
+    the uploads are retried.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -32,7 +37,6 @@ function Get-RequiredEnv {
 }
 
 $storageAccount = Get-RequiredEnv 'STORAGE_ACCOUNT'
-$storageKey     = Get-RequiredEnv 'STORAGE_KEY'
 $sampleDataPath = Get-RequiredEnv 'SAMPLE_DATA_PATH'
 
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
@@ -62,17 +66,25 @@ foreach ($container in $map.Keys) {
 
     Write-Host "Uploading $fileCount file(s) from '$source' -> container '$container'..."
 
-    az storage blob upload-batch `
-        --account-name $storageAccount `
-        --account-key $storageKey `
-        --destination $container `
-        --source $source `
-        --overwrite true `
-        --no-progress `
-        --only-show-errors | Out-Null
+    # Retry to absorb RBAC role-assignment propagation delay.
+    $maxAttempts = 10
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        az storage blob upload-batch `
+            --account-name $storageAccount `
+            --auth-mode login `
+            --destination $container `
+            --source $source `
+            --overwrite true `
+            --no-progress `
+            --only-show-errors 2>&1 | Out-Null
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Upload to container '$container' failed (az exit code $LASTEXITCODE)."
+        if ($LASTEXITCODE -eq 0) { break }
+
+        if ($attempt -eq $maxAttempts) {
+            throw "Upload to container '$container' failed after $maxAttempts attempts (az exit code $LASTEXITCODE). If this is an authorization error, confirm the running principal has 'Storage Blob Data Contributor' on '$storageAccount'."
+        }
+        Write-Host "  attempt $attempt failed (likely RBAC propagation); retrying in 20s..."
+        Start-Sleep -Seconds 20
     }
 }
 

@@ -17,10 +17,15 @@
 .NOTES
     Environment variables:
       CU_ENDPOINT           - Foundry / AI Services endpoint
-      CU_API_KEY            - AI Services key
       ANALYZER_ID           - id to give the custom analyzer
       COMPLETION_DEPLOYMENT - completion model deployment name (CU-supported, e.g. gpt-5.2)
       EMBEDDING_DEPLOYMENT  - embedding model deployment name
+
+    Authentication: Entra ID (AAD). Company policy disables AI Services keys, so
+    the script acquires a bearer token for https://cognitiveservices.azure.com
+    via the Azure CLI. The running principal must hold "Cognitive Services User"
+    (or higher) on the Foundry resource. A freshly created role assignment can
+    take a minute or two to propagate, so the call is retried.
 
     Reference:
       https://learn.microsoft.com/azure/ai-services/content-understanding/tutorial/create-custom-analyzer
@@ -38,15 +43,49 @@ function Get-RequiredEnv {
 }
 
 $endpoint   = (Get-RequiredEnv 'CU_ENDPOINT').TrimEnd('/')
-$apiKey     = Get-RequiredEnv 'CU_API_KEY'
 $analyzerId = Get-RequiredEnv 'ANALYZER_ID'
 $completion = Get-RequiredEnv 'COMPLETION_DEPLOYMENT'
 $embedding  = Get-RequiredEnv 'EMBEDDING_DEPLOYMENT'
 
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+    throw "Azure CLI ('az') was not found on PATH. Install it from https://aka.ms/azcli."
+}
+
+# Acquire an Entra ID token for the Cognitive Services data plane.
+$token = az account get-access-token --resource "https://cognitiveservices.azure.com" --query accessToken -o tsv 2>$null
+if ([string]::IsNullOrWhiteSpace($token)) {
+    throw "Failed to acquire an Entra ID access token. Run 'az login' first."
+}
+
 $apiVersion = '2025-11-01'
 $headers = @{
-    'Ocp-Apim-Subscription-Key' = $apiKey
-    'Content-Type'              = 'application/json'
+    'Authorization' = "Bearer $token"
+    'Content-Type'  = 'application/json'
+}
+
+# Content Understanding requires resource-level default model deployments to be
+# set before any analyzer can be created. Map the model aliases to our actual
+# deployment names via PATCH /contentunderstanding/defaults.
+Write-Host "Setting Content Understanding default model deployments..."
+$defaults = @{
+    modelDeployments = @{
+        'gpt-5.2'                           = $completion
+        'text-embedding-3-large'            = $embedding
+        'prebuilt-analyzer-completion'      = $completion
+        'prebuilt-analyzer-completion-mini' = $completion
+        'prebuilt-analyzer-embedding'       = $embedding
+    }
+}
+$defaultsUri = "$endpoint/contentunderstanding/defaults?api-version=$apiVersion"
+for ($attempt = 1; $attempt -le 10; $attempt++) {
+    $dr = Invoke-WebRequest -Method Patch -Uri $defaultsUri -Headers $headers -Body ($defaults | ConvertTo-Json -Depth 6) -SkipHttpErrorCheck
+    if ($dr.StatusCode -lt 400) { break }
+    if ($dr.StatusCode -in 401, 403 -and $attempt -lt 10) {
+        Write-Host "  attempt $attempt got HTTP $($dr.StatusCode) (likely RBAC propagation); retrying in 20s..."
+        Start-Sleep -Seconds 20
+        continue
+    }
+    throw "Setting CU defaults failed (HTTP $($dr.StatusCode)): $($dr.Content)"
 }
 
 # Custom analyzer definition: extract the key fields from an invoice.
@@ -95,8 +134,17 @@ $createUri = "$endpoint/contentunderstanding/analyzers/$($analyzerId)?api-versio
 
 Write-Host "Creating Content Understanding analyzer '$analyzerId'..."
 
-$response = Invoke-WebRequest -Method Put -Uri $createUri -Headers $headers -Body $body -SkipHttpErrorCheck
-if ($response.StatusCode -notin 200, 201) {
+# Retry to absorb RBAC role-assignment propagation delay (401/403).
+$response = $null
+$maxAttempts = 10
+for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    $response = Invoke-WebRequest -Method Put -Uri $createUri -Headers $headers -Body $body -SkipHttpErrorCheck
+    if ($response.StatusCode -in 200, 201) { break }
+    if ($response.StatusCode -in 401, 403 -and $attempt -lt $maxAttempts) {
+        Write-Host "  attempt $attempt got HTTP $($response.StatusCode) (likely RBAC propagation); retrying in 20s..."
+        Start-Sleep -Seconds 20
+        continue
+    }
     throw "Analyzer create failed (HTTP $($response.StatusCode)): $($response.Content)"
 }
 
@@ -108,7 +156,7 @@ if ($opLocation) {
 
     for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Seconds 5
-        $statusResp = Invoke-RestMethod -Method Get -Uri $opUri -Headers @{ 'Ocp-Apim-Subscription-Key' = $apiKey }
+        $statusResp = Invoke-RestMethod -Method Get -Uri $opUri -Headers @{ 'Authorization' = "Bearer $token" }
         $status = "$($statusResp.status)".ToLower()
         Write-Host "  status: $status"
 

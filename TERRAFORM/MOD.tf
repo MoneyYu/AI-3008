@@ -17,37 +17,56 @@ resource "azurerm_storage_account" "default" {
   account_replication_type        = "LRS"
   allow_nested_items_to_be_public = false
 
+  # Company policy forbids access keys - enforce Entra ID (AAD) auth only.
+  shared_access_key_enabled = false
+
   tags = {
     environment = local.group_name
   }
 }
 
 # Sample images for the vision / Content Understanding image demos.
+# Containers use storage_account_id (management plane) so they can be created
+# without storage data-plane keys (which policy forbids).
 resource "azurerm_storage_container" "images" {
   name                  = "sample-images"
-  storage_account_name  = azurerm_storage_account.default.name
+  storage_account_id    = azurerm_storage_account.default.id
   container_access_type = "private"
 }
 
 # Sample documents/forms for Content Understanding + Document Intelligence.
 resource "azurerm_storage_container" "documents" {
   name                  = "sample-documents"
-  storage_account_name  = azurerm_storage_account.default.name
+  storage_account_id    = azurerm_storage_account.default.id
   container_access_type = "private"
 }
 
 # Document corpus that the AI Search knowledge mining indexer crawls.
 resource "azurerm_storage_container" "knowledge_base" {
   name                  = "knowledge-base"
-  storage_account_name  = azurerm_storage_account.default.name
+  storage_account_id    = azurerm_storage_account.default.id
   container_access_type = "private"
 }
 
 # Target container for the AI Search knowledge store projections.
 resource "azurerm_storage_container" "knowledge_store" {
   name                  = "knowledge-store"
-  storage_account_name  = azurerm_storage_account.default.name
+  storage_account_id    = azurerm_storage_account.default.id
   container_access_type = "private"
+}
+
+###############################################################################
+# Role assignments for Entra ID (AAD) data-plane access.
+# Because access keys are disabled, every principal that touches blob data
+# needs an explicit RBAC role on the storage account.
+###############################################################################
+
+# The principal running Terraform (and the data-plane upload script) needs to
+# read/write blobs via AAD.
+resource "azurerm_role_assignment" "deployer_blob" {
+  scope                = azurerm_storage_account.default.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 ###############################################################################
@@ -65,6 +84,9 @@ resource "azurerm_cognitive_account" "foundry" {
   sku_name              = "S0"
   custom_subdomain_name = "${local.group_name_lower}-foundry-${random_string.rid.result}"
 
+  # Company policy enforces Entra ID (AAD) auth only - keys are disabled.
+  local_auth_enabled = false
+
   # Required for the modern Foundry (stateful) experience and projects.
   project_management_enabled = true
 
@@ -75,6 +97,14 @@ resource "azurerm_cognitive_account" "foundry" {
   tags = {
     environment = local.group_name
   }
+}
+
+# The principal running the Content Understanding data-plane script needs to
+# call the AI Services data plane via AAD.
+resource "azurerm_role_assignment" "deployer_cs_user" {
+  scope                = azurerm_cognitive_account.foundry.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 resource "azurerm_cognitive_account_project" "project" {
@@ -115,10 +145,11 @@ resource "azurerm_cognitive_deployment" "gpt" {
   }
 }
 
-# Image generation model (module 2). Latest GA OpenAI image model; this is
-# also what the current lab uses.
+# Image generation model (module 2). Default gpt-image-2 (latest GA); the
+# model name/version are variables so you can switch to a model your
+# subscription has quota for (e.g. gpt-image-1.5) without editing this file.
 resource "azurerm_cognitive_deployment" "image" {
-  name                 = "gpt-image-2"
+  name                 = var.image_model_name
   cognitive_account_id = azurerm_cognitive_account.foundry.id
 
   sku {
@@ -128,8 +159,8 @@ resource "azurerm_cognitive_deployment" "image" {
 
   model {
     format  = "OpenAI"
-    name    = "gpt-image-2"
-    version = "2026-04-21"
+    name    = var.image_model_name
+    version = var.image_model_version
   }
 
   depends_on = [azurerm_cognitive_deployment.gpt]
@@ -193,8 +224,12 @@ resource "azurerm_cognitive_deployment" "cu_completion" {
 resource "azurerm_search_service" "search" {
   name                = "${local.group_name_lower}-search-${random_string.rid.result}"
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = local.search_location
   sku                 = "standard"
+
+  # Company policy enforces Entra ID (AAD) auth only - disable api-key auth
+  # and use Azure RBAC for the data plane.
+  local_authentication_enabled = false
 
   identity {
     type = "SystemAssigned"
@@ -203,6 +238,36 @@ resource "azurerm_search_service" "search" {
   tags = {
     environment = local.group_name
   }
+}
+
+# The AI Search managed identity needs to read the source blobs (indexer) and
+# write knowledge-store projections - via AAD, since keys are disabled.
+resource "azurerm_role_assignment" "search_blob" {
+  scope                = azurerm_storage_account.default.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_search_service.search.identity[0].principal_id
+}
+
+# The AI Search managed identity calls AI Services (built-in skills) via its
+# identity (the skillset uses AIServicesByIdentity), so it needs this role.
+resource "azurerm_role_assignment" "search_cs_user" {
+  scope                = azurerm_cognitive_account.foundry.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = azurerm_search_service.search.identity[0].principal_id
+}
+
+# The principal running the build-search-index script manages Search objects
+# (data source, skillset, index, indexer) via AAD.
+resource "azurerm_role_assignment" "deployer_search_contributor" {
+  scope                = azurerm_search_service.search.id
+  role_definition_name = "Search Service Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_role_assignment" "deployer_search_data" {
+  scope                = azurerm_search_service.search.id
+  role_definition_name = "Search Index Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 ###############################################################################
@@ -214,6 +279,9 @@ resource "azurerm_cognitive_account" "docintel" {
   resource_group_name = azurerm_resource_group.rg.name
   kind                = "FormRecognizer"
   sku_name            = "S0"
+
+  # Company policy enforces Entra ID (AAD) auth only - keys are disabled.
+  local_auth_enabled = false
 
   identity {
     type = "SystemAssigned"
@@ -237,9 +305,10 @@ resource "azurerm_cognitive_account" "docintel" {
 
 locals {
   pwsh           = "pwsh"
+  pwsh_args      = ["-NoProfile", "-File"]
   scripts_dir    = "${path.module}/scripts"
   sampledata_dir = "${path.module}/sample-data"
-  cu_analyzer_id = "ai3008-invoice-analyzer"
+  cu_analyzer_id = "ai3008invoiceanalyzer"
   search_index   = "knowledge-mining"
 }
 
@@ -255,15 +324,15 @@ resource "terraform_data" "upload_sample_data" {
     azurerm_storage_container.images,
     azurerm_storage_container.documents,
     azurerm_storage_container.knowledge_base,
+    azurerm_role_assignment.deployer_blob,
   ]
 
   provisioner "local-exec" {
-    interpreter = [local.pwsh, "-File"]
+    interpreter = concat([local.pwsh], local.pwsh_args)
     command     = "${local.scripts_dir}/upload-sample-data.ps1"
 
     environment = {
       STORAGE_ACCOUNT  = azurerm_storage_account.default.name
-      STORAGE_KEY      = azurerm_storage_account.default.primary_access_key
       SAMPLE_DATA_PATH = local.sampledata_dir
     }
   }
@@ -281,15 +350,15 @@ resource "terraform_data" "create_cu_analyzer" {
     terraform_data.upload_sample_data,
     azurerm_cognitive_deployment.cu_completion,
     azurerm_cognitive_deployment.embedding,
+    azurerm_role_assignment.deployer_cs_user,
   ]
 
   provisioner "local-exec" {
-    interpreter = [local.pwsh, "-File"]
+    interpreter = concat([local.pwsh], local.pwsh_args)
     command     = "${local.scripts_dir}/create-cu-analyzer.ps1"
 
     environment = {
       CU_ENDPOINT           = azurerm_cognitive_account.foundry.endpoint
-      CU_API_KEY            = azurerm_cognitive_account.foundry.primary_access_key
       ANALYZER_ID           = local.cu_analyzer_id
       COMPLETION_DEPLOYMENT = azurerm_cognitive_deployment.cu_completion.name
       EMBEDDING_DEPLOYMENT  = azurerm_cognitive_deployment.embedding.name
@@ -308,20 +377,22 @@ resource "terraform_data" "build_search_index" {
   depends_on = [
     terraform_data.upload_sample_data,
     azurerm_cognitive_deployment.embedding,
+    azurerm_role_assignment.search_blob,
+    azurerm_role_assignment.search_cs_user,
+    azurerm_role_assignment.deployer_search_contributor,
+    azurerm_role_assignment.deployer_search_data,
   ]
 
   provisioner "local-exec" {
-    interpreter = [local.pwsh, "-File"]
+    interpreter = concat([local.pwsh], local.pwsh_args)
     command     = "${local.scripts_dir}/build-search-index.ps1"
 
     environment = {
       SEARCH_ENDPOINT      = "https://${azurerm_search_service.search.name}.search.windows.net"
-      SEARCH_ADMIN_KEY     = azurerm_search_service.search.primary_key
-      STORAGE_CONNECTION   = azurerm_storage_account.default.primary_connection_string
+      STORAGE_RESOURCE_ID  = azurerm_storage_account.default.id
       KB_CONTAINER         = azurerm_storage_container.knowledge_base.name
-      AISERVICES_ENDPOINT  = azurerm_cognitive_account.foundry.endpoint
-      AISERVICES_KEY       = azurerm_cognitive_account.foundry.primary_access_key
-      EMBEDDING_DEPLOYMENT = azurerm_cognitive_deployment.embedding.name
+      KS_CONTAINER         = azurerm_storage_container.knowledge_store.name
+      AISERVICES_SUBDOMAIN = azurerm_cognitive_account.foundry.endpoint
       INDEX_NAME           = local.search_index
     }
   }

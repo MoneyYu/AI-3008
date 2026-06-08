@@ -18,13 +18,8 @@ output "foundry_name" {
 }
 
 output "foundry_endpoint" {
-  description = "Endpoint used for Azure OpenAI and Content Understanding calls."
+  description = "Endpoint used for Azure OpenAI and Content Understanding calls (AAD auth)."
   value       = azurerm_cognitive_account.foundry.endpoint
-}
-
-output "foundry_key" {
-  value     = azurerm_cognitive_account.foundry.primary_access_key
-  sensitive = true
 }
 
 output "foundry_project_name" {
@@ -54,11 +49,6 @@ output "search_endpoint" {
   value = "https://${azurerm_search_service.search.name}.search.windows.net"
 }
 
-output "search_admin_key" {
-  value     = azurerm_search_service.search.primary_key
-  sensitive = true
-}
-
 output "search_index_name" {
   value = local.search_index
 }
@@ -68,19 +58,9 @@ output "storage_account_name" {
   value = azurerm_storage_account.default.name
 }
 
-output "storage_primary_key" {
-  value     = azurerm_storage_account.default.primary_access_key
-  sensitive = true
-}
-
 # --- Azure Document Intelligence ---------------------------------------------
 output "docintel_endpoint" {
   value = azurerm_cognitive_account.docintel.endpoint
-}
-
-output "docintel_key" {
-  value     = azurerm_cognitive_account.docintel.primary_access_key
-  sensitive = true
 }
 
 # --- Content Understanding analyzer ------------------------------------------

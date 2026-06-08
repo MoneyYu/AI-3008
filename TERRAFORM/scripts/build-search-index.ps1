@@ -17,12 +17,16 @@
     Environment variables:
       SEARCH_ENDPOINT       - https://<service>.search.windows.net
       SEARCH_ADMIN_KEY      - search admin key
-      STORAGE_CONNECTION    - storage account connection string
+      STORAGE_RESOURCE_ID   - storage account ARM resource ID (managed-identity connection)
       KB_CONTAINER          - blob container with the document corpus
-      AISERVICES_ENDPOINT   - AI Services endpoint (informational)
+      KS_CONTAINER          - blob container for knowledge-store projections
       AISERVICES_KEY        - AI Services key (binds billable built-in skills)
-      EMBEDDING_DEPLOYMENT  - embedding deployment name (informational)
       INDEX_NAME            - name to give the index/indexer/skillset/datasource
+
+    Authentication: the data source and knowledge store use the AI Search
+    service's system-assigned managed identity (ResourceId= connection string),
+    because company policy forbids storage account access keys. The Search
+    service identity must hold a blob data role on the storage account.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -36,22 +40,35 @@ function Get-RequiredEnv {
     return $value
 }
 
-$endpoint    = (Get-RequiredEnv 'SEARCH_ENDPOINT').TrimEnd('/')
-$adminKey    = Get-RequiredEnv 'SEARCH_ADMIN_KEY'
-$storageConn = Get-RequiredEnv 'STORAGE_CONNECTION'
-$kbContainer = Get-RequiredEnv 'KB_CONTAINER'
-$aiKey       = Get-RequiredEnv 'AISERVICES_KEY'
-$indexName   = Get-RequiredEnv 'INDEX_NAME'
+$endpoint     = (Get-RequiredEnv 'SEARCH_ENDPOINT').TrimEnd('/')
+$storageResId = Get-RequiredEnv 'STORAGE_RESOURCE_ID'
+$kbContainer  = Get-RequiredEnv 'KB_CONTAINER'
+$ksContainer  = Get-RequiredEnv 'KS_CONTAINER'
+$aiSubdomain  = (Get-RequiredEnv 'AISERVICES_SUBDOMAIN').TrimEnd('/')
+$indexName    = Get-RequiredEnv 'INDEX_NAME'
 
-$apiVersion       = '2024-07-01'
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+    throw "Azure CLI ('az') was not found on PATH. Install it from https://aka.ms/azcli."
+}
+
+# Acquire an Entra ID token for the Azure AI Search data plane (keys disabled).
+$token = az account get-access-token --resource "https://search.azure.com" --query accessToken -o tsv 2>$null
+if ([string]::IsNullOrWhiteSpace($token)) {
+    throw "Failed to acquire an Entra ID access token. Run 'az login' first."
+}
+
+# Managed-identity connection string (no account key) for blob access.
+$storageConn = "ResourceId=$storageResId;"
+
+$apiVersion       = '2024-11-01-preview'
 $dataSourceName   = "$indexName-ds"
 $skillsetName     = "$indexName-ss"
 $indexerName      = "$indexName-idxr"
-$knowledgeStoreCt = 'knowledge-store'
+$knowledgeStoreCt = $ksContainer
 
 $headers = @{
-    'api-key'      = $adminKey
-    'Content-Type' = 'application/json'
+    'Authorization' = "Bearer $token"
+    'Content-Type'  = 'application/json'
 }
 
 function Invoke-Search {
@@ -68,15 +85,23 @@ function Invoke-Search {
         $params['Body'] = ($Body | ConvertTo-Json -Depth 20)
     }
 
-    $resp = Invoke-WebRequest @params
-    if ($resp.StatusCode -ge 400) {
+    # Retry to absorb RBAC role-assignment propagation delay (401/403).
+    for ($attempt = 1; $attempt -le 10; $attempt++) {
+        $resp = Invoke-WebRequest @params
+        if ($resp.StatusCode -lt 400) { return $resp }
+        if ($resp.StatusCode -in 401, 403 -and $attempt -lt 10) {
+            Write-Host "  $Method $Path got HTTP $($resp.StatusCode) (likely RBAC propagation); retrying in 20s..."
+            Start-Sleep -Seconds 20
+            continue
+        }
         throw "$Method $Path failed (HTTP $($resp.StatusCode)): $($resp.Content)"
     }
-    return $resp
 }
 
 # --- 1. Data source ----------------------------------------------------------
 Write-Host "Creating data source '$dataSourceName'..."
+# System-assigned managed identity is implied by the ResourceId= connection
+# string; the 'identity' property is omitted (not valid for system MI here).
 $dataSource = @{
     name        = $dataSourceName
     type        = 'azureblob'
@@ -91,9 +116,11 @@ $skillset = @{
     name                = $skillsetName
     description         = 'AI-3008 knowledge mining enrichment pipeline.'
     cognitiveServices   = @{
-        '@odata.type' = '#Microsoft.Azure.Search.CognitiveServicesByKey'
-        description   = 'AI Services account that backs the billable built-in skills.'
-        key           = $aiKey
+        '@odata.type'  = '#Microsoft.Azure.Search.AIServicesByIdentity'
+        description    = 'AI Services account that backs the billable built-in skills (managed identity).'
+        subdomainUrl   = $aiSubdomain
+        # identity = null => use the search service's system-assigned managed identity
+        identity       = $null
     }
     skills              = @(
         @{
