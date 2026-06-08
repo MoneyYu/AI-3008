@@ -2,11 +2,14 @@
 
 This repository is a **Microsoft training-course reference repo** for the course
 **AI-3008 – "Extract insights from visual data on Azure"** (a vision / multimodal Azure AI course).
-It is *not* an application codebase. It contains two things:
+It is *not* an application codebase. It contains:
 
-- `README.md` – the course reference page (links, lab info, mind map) shown to attendees.
-- `TERRAFORM/` – a "demo-ready backup" Azure environment the trainer can stand up if the live,
-  from-scratch demo fails. It must reach a *completed* state (resources **and** data-plane content).
+- `README.md` – the attendee-facing course reference page (links, lab info, mind map). Keep
+  trainer-private / demo-environment details **out** of this file.
+- `TERRAFORM/` – a trainer-private "demo-ready backup" Azure environment the trainer can stand up if
+  the live, from-scratch demo fails. It must reach a *completed* state (resources **and** data-plane).
+- `docs/` – trainer-only documentation (e.g. `docs/demo-environment.md` describing the demo stack and
+  model choices). Not attendee-facing.
 
 ## Validate changes
 
