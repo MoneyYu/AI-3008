@@ -6,7 +6,8 @@ tags: AI-3008, Trainer, Demo
 
 > This document is for the **trainer** preparing the AI-3008 demos. It is intentionally kept out of
 > the attendee-facing [`README.md`](../README.md). For the full Terraform usage, variables, and
-> prerequisites, see [`TERRAFORM/README.md`](../TERRAFORM/README.md).
+> prerequisites, see [`TERRAFORM/README.md`](../TERRAFORM/README.md). For module-by-module lesson
+> prep, see the [Teaching guide (備課指南)](./teaching-guide.md).
 
 ## Overview
 
