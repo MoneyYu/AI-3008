@@ -20,13 +20,17 @@ working if the live build fails.
 | Storage account + containers | Sample data + knowledge store | 4-8 |
 | Azure Document Intelligence (`FormRecognizer`) | Document extraction | 7 |
 
-After the resources are created, three PowerShell scripts bring the environment to a
-**completed end state** (controlled by `enable_data_plane`):
+**As part of `terraform apply`** (no separate command), three PowerShell scripts then run
+automatically to bring the environment to a **completed end state** (controlled by the
+`enable_data_plane` variable, which defaults to `true`):
 
 1. `scripts/upload-sample-data.ps1` - uploads the realistic `sample-data/` assets to blob storage.
 2. `scripts/create-cu-analyzer.ps1` - creates a custom Content Understanding **invoice analyzer**.
 3. `scripts/build-search-index.ps1` - builds and runs the AI Search **knowledge-mining** pipeline
    (data source -> skillset with AI enrichment + knowledge store -> index -> indexer).
+
+See [Data plane: sample data, analyzer, and index](#data-plane-sample-data-analyzer-and-index) for
+how this runs and how to re-run it.
 
 ## Authentication: Entra ID only (no keys)
 
@@ -142,6 +146,59 @@ terraform apply -auto-approve `
   -var "image_model_name=gpt-image-1.5" `
   -var "image_model_version=2025-12-16" `
   -var "search_location=eastus"
+```
+
+## Data plane: sample data, analyzer, and index
+
+**You do not run a separate command to deploy the sample data** - it happens automatically during
+`terraform apply`. When `enable_data_plane = true` (the default), Terraform runs the three
+`scripts/*.ps1` files (as `terraform_data` + `local-exec` provisioners) in order at the end of the
+apply: upload sample data -> create the Content Understanding analyzer -> build and run the AI Search
+index.
+
+For this to succeed, before you run `terraform apply` make sure:
+
+- You are signed in with **`az login`** - the scripts authenticate as your Azure CLI identity (the
+  same identity Terraform runs as by default; otherwise set `deployer_object_id`).
+- **PowerShell 7+ (`pwsh`)** and the **Azure CLI (`az`)** are installed and on `PATH`.
+
+### Verify it worked
+
+```powershell
+# CU analyzer id
+terraform output -raw cu_analyzer_id
+
+# Number of documents indexed by the knowledge-mining pipeline (expect 12)
+$ep  = terraform output -raw search_endpoint
+$tok = az account get-access-token --resource "https://search.azure.com" --query accessToken -o tsv
+Invoke-RestMethod -Uri "$ep/indexes/knowledge-mining/docs/`$count?api-version=2024-11-01-preview" `
+  -Headers @{ Authorization = "Bearer $tok" }
+```
+
+### Re-run the data plane (without recreating the infrastructure)
+
+The data-plane steps only re-run when their script content changes or when you explicitly replace
+them. To force them to run again (for example after a transient failure, or to refresh the sample
+data), taint/replace the relevant resource and re-apply:
+
+```powershell
+# Re-run all three steps
+terraform apply -var "group_postfix=01" `
+  -replace='terraform_data.upload_sample_data[0]' `
+  -replace='terraform_data.create_cu_analyzer[0]' `
+  -replace='terraform_data.build_search_index[0]'
+```
+
+Replace only the step you need (for example just `terraform_data.build_search_index[0]`). The scripts
+are idempotent - re-running them overwrites the sample blobs, replaces the analyzer
+(`allowReplace=true`), and re-creates the search objects.
+
+### If you deployed with `enable_data_plane = false`
+
+Re-apply with it enabled to add the sample data, analyzer, and index to the existing environment:
+
+```powershell
+terraform apply -var "group_postfix=01" -var "enable_data_plane=true"
 ```
 
 ## Sample data
