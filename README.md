@@ -110,7 +110,16 @@ course — only the English instructions above are available.
 
 [Vision-enabled chat model concepts](https://learn.microsoft.com/azure/ai-foundry/openai/concepts/gpt-with-vision)
 
-[Azure OpenAI Responses API](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/responses)
+#### ChatCompletions API vs Responses API
+The course compares two APIs for image-based prompts. **ChatCompletions** is stateless — the client
+sends the full conversation history each turn. **Responses** is the newer **stateful** API (it unifies
+the best of Chat Completions and the Assistants API; the server tracks state, so the app sends only the
+latest input + previous response ID). Prefer the **Responses API** for new apps unless you need to
+manage conversation memory yourself.
+
+- [Work with Chat Completions models](https://learn.microsoft.com/azure/foundry/openai/how-to/chatgpt)
+- [Use the Azure OpenAI Responses API](https://learn.microsoft.com/azure/ai-foundry/openai/how-to/responses)
+
 
 ### 2. Generate images with AI
 [Image generation how-to (GPT-Image)](https://learn.microsoft.com/azure/foundry/openai/how-to/dall-e)
