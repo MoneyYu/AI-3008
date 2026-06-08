@@ -97,6 +97,12 @@ variable "search_location" {
   default     = null
 }
 
+variable "deployer_object_id" {
+  description = "Entra object ID that the data-plane scripts authenticate as (the `az login` identity). Defaults to the identity Terraform runs as. Override when Terraform runs under a different principal (e.g. a service principal) than `az`."
+  type        = string
+  default     = null
+}
+
 variable "embedding_capacity" {
   description = "Capacity for the text-embedding-3-large deployment."
   type        = number
@@ -128,9 +134,9 @@ locals {
   location         = "eastus2"
   search_location  = coalesce(var.search_location, local.location)
   random_str       = "vis"
-  # Object ID of the lab administrator to grant data-plane RBAC. Replace with
-  # your own principal object ID if you run the data-plane scripts.
-  admin_oid = "b8e50bc5-6559-4643-a003-2807a8d707f7"
+  # Entra object ID that the data-plane scripts authenticate as (the `az`
+  # identity). Defaults to the identity Terraform runs as.
+  deployer_oid = coalesce(var.deployer_object_id, data.azurerm_client_config.current.object_id)
 
   lab01_name = "lab01"
   lab02_name = "lab02"

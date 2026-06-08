@@ -66,7 +66,7 @@ resource "azurerm_storage_container" "knowledge_store" {
 resource "azurerm_role_assignment" "deployer_blob" {
   scope                = azurerm_storage_account.default.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = data.azurerm_client_config.current.object_id
+  principal_id         = local.deployer_oid
 }
 
 ###############################################################################
@@ -104,7 +104,7 @@ resource "azurerm_cognitive_account" "foundry" {
 resource "azurerm_role_assignment" "deployer_cs_user" {
   scope                = azurerm_cognitive_account.foundry.id
   role_definition_name = "Cognitive Services User"
-  principal_id         = data.azurerm_client_config.current.object_id
+  principal_id         = local.deployer_oid
 }
 
 resource "azurerm_cognitive_account_project" "project" {
@@ -261,13 +261,13 @@ resource "azurerm_role_assignment" "search_cs_user" {
 resource "azurerm_role_assignment" "deployer_search_contributor" {
   scope                = azurerm_search_service.search.id
   role_definition_name = "Search Service Contributor"
-  principal_id         = data.azurerm_client_config.current.object_id
+  principal_id         = local.deployer_oid
 }
 
 resource "azurerm_role_assignment" "deployer_search_data" {
   scope                = azurerm_search_service.search.id
   role_definition_name = "Search Index Data Contributor"
-  principal_id         = data.azurerm_client_config.current.object_id
+  principal_id         = local.deployer_oid
 }
 
 ###############################################################################
@@ -281,7 +281,9 @@ resource "azurerm_cognitive_account" "docintel" {
   sku_name            = "S0"
 
   # Company policy enforces Entra ID (AAD) auth only - keys are disabled.
-  local_auth_enabled = false
+  # AAD auth requires a custom subdomain (regional endpoints reject AAD tokens).
+  local_auth_enabled    = false
+  custom_subdomain_name = "${local.group_name_lower}-docintel-${random_string.rid.result}"
 
   identity {
     type = "SystemAssigned"

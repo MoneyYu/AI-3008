@@ -128,6 +128,7 @@ terraform output -raw storage_account_name
 | `embedding_capacity` | `50` | Capacity for `text-embedding-3-large` |
 | `cu_completion_capacity` | `50` | Capacity for the `gpt-5.2` CU completion model |
 | `search_location` | *(main location)* | Region for AI Search; override if the default region is out of capacity |
+| `deployer_object_id` | *(Terraform identity)* | Entra object ID the data-plane scripts run as; override if Terraform runs under a different principal than `az login` |
 | `enable_data_plane` | `true` | Run the data-plane scripts after apply |
 | `user_name` / `user_password` | `demouser` / `Azuredemo2020` | Reserved for lab user scenarios |
 
